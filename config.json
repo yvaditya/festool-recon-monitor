@@ -6,7 +6,8 @@
     "ts 60",
     "ct 36",
     "T 18",
-    "CT 15"
+    "CT 15",
+    "drill"
   ],
   "alert_on_new": true,
   "alert_on_sold_out": false
