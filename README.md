@@ -1,143 +1,103 @@
 # Festool Recon Monitor
 
-Watches [festoolrecon.com](https://www.festoolrecon.com) and **emails / texts your phone the moment something new comes on sale** — with a 🔥 priority alert when a tool on your personal watchlist shows up.
+Watches [festoolrecon.com](https://www.festoolrecon.com) and **pushes a notification to your phone the moment something new comes on sale** — with a 🔥 priority alert when a tool on your personal watchlist shows up.
 
-Runs entirely on **GitHub Actions** (free, in the cloud) on a schedule. No always-on computer required.
+- Runs entirely on **GitHub Actions** (free, in the cloud) every ~5 minutes. No always-on computer required.
+- Notifications via **[ntfy](https://ntfy.sh)** — open-source, **no account, no password, no token**.
+- A **web page** (GitHub Pages) lets you pick what to watch with checkboxes — no editing JSON by hand.
 
 ---
 
 ## How it works
 
-Festool Recon is a Shopify store. The "One and Done" recon queue is exposed as JSON:
-
-- `https://www.festoolrecon.com/products.json` — every product, with an `available` flag.
-- An item that is **`available: true`** (and isn't the *"Wow, that went fast!!!"* placeholder) is **on sale right now**. When it sells, it flips to `available: false` — that's the "greyed out / done" state you see on the site.
+Festool Recon is a Shopify store; its catalog is exposed as JSON. A product that is `available: true` (and isn't the *"Wow, that went fast!!!"* placeholder) is **on sale right now**; when it sells it flips to `available: false` (the "greyed out / done" state on the site).
 
 Every run, `festool_monitor.py`:
+1. Fetches all products, builds the current **on-sale set**, and writes `docs/catalog.json` (so the picker UI has data).
+2. Diffs the on-sale set against `state.json` (committed in this repo).
+3. Sends a notification: **new item** → normal alert; **new item matching your watchlist** → 🔥 urgent; **sold out** → optional.
+4. Saves the new state back so the next run remembers.
 
-1. Fetches all products and builds the current **on-sale set**.
-2. Loads the previous on-sale set from `state.json` (committed in this repo).
-3. Diffs them:
-   - **New item on sale** → normal email alert.
-   - **New item matching your watchlist** → 🔥 urgent email alert (louder subject line).
-   - **Item sold out** → optional alert (off by default).
-4. Emails you a single summary of the changes.
-5. Saves the new `state.json` back to the repo so the next run remembers.
-
-State is only advanced **after** a successful send, so a transient email failure just retries next run instead of silently dropping an alert.
+State only advances **after** a successful send, so a transient failure retries instead of dropping an alert.
 
 ---
 
-## One-time setup
+## Setup (one time, ~3 minutes)
 
-### 1. Pick how email gets sent (the "From" account)
+### 1. Get notifications on your phone with ntfy (no credentials)
 
-The script speaks plain SMTP. Easiest options:
+1. Install the **ntfy** app: [iOS](https://apps.apple.com/app/ntfy/id1625396347) · [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy).
+2. Pick a **secret topic name** — make it long and random so nobody else can guess it, e.g. `festool-recon-vy-9f3k2x7q`.
+3. In the app: **+ → Subscribe to topic →** enter that exact name.
+4. Add it as a repo secret (you only do this once):
+   ```bash
+   gh secret set NTFY_TOPIC --body "festool-recon-vy-9f3k2x7q"
+   ```
+   > The topic is the only thing you need. It is **not** in the public repo (secrets are encrypted), so your alerts stay private. Want a real account/auth or a self-hosted server? Set `NTFY_SERVER` / `NTFY_TOKEN` too — both optional.
 
-**Gmail (recommended)**
-1. Turn on 2-Step Verification: <https://myaccount.google.com/security>
-2. Create an App Password: <https://myaccount.google.com/apppasswords> (pick "Mail"). You get a 16-character password.
-3. Use:
-   - `SMTP_HOST` = `smtp.gmail.com` (this is the default, so you can skip it)
-   - `SMTP_PORT` = `587` (default, skippable)
-   - `SMTP_USER` = your full Gmail address
-   - `SMTP_PASS` = the 16-char App Password (**not** your normal password)
+**Prefer email or a real SMS text instead?** It also supports SMTP — set `SMTP_USER`, `SMTP_PASS`, and `MAIL_TO` (an email address, or a carrier SMS gateway like `5551234567@vtext.com`). You can use ntfy **and** email together. See [`config`/secrets table](#secrets) below.
 
-**iCloud (you already have an Apple ID)**
-1. Create an app-specific password: <https://appleid.apple.com> → Sign-In and Security → App-Specific Passwords.
-2. Use `SMTP_HOST` = `smtp.mail.me.com`, `SMTP_PORT` = `587`, `SMTP_USER` = your iCloud email, `SMTP_PASS` = the app-specific password.
+### 2. Pick what to watch (the web UI)
 
-### 2. Pick where the alert lands (the "To" — your phone)
+Once GitHub Pages is enabled (see below), open:
 
-Set `MAIL_TO` to **either**:
-
-- **Your email** (e.g. `vyerra@icloud.com`) — your phone's Mail app shows a push notification. Simple and reliable.
-- **A carrier SMS gateway** — turns the email into a real **text message** on your phone. Format: `<10-digit-number>@gateway`:
-
-  | Carrier      | Gateway address              |
-  |--------------|------------------------------|
-  | AT&T         | `5551234567@txt.att.net`     |
-  | Verizon      | `5551234567@vtext.com`       |
-  | T-Mobile     | `5551234567@tmomail.net`     |
-  | Google Fi    | `5551234567@msg.fi.google.com` |
-  | US Cellular  | `5551234567@email.uscc.net`  |
-  | Cricket      | `5551234567@sms.cricketwireless.net` |
-
-  > Carrier gateways are free but some carriers are phasing them out and may truncate long messages. If texts don't arrive, use your email address instead. You can put **both** in `MAIL_TO`, comma-separated.
-
-### 3. Add the secrets to GitHub
-
-In your repo: **Settings → Secrets and variables → Actions → New repository secret**. Add:
-
-| Secret      | Required | Example                          |
-|-------------|----------|----------------------------------|
-| `SMTP_USER` | ✅       | `youraddress@gmail.com`          |
-| `SMTP_PASS` | ✅       | `abcd efgh ijkl mnop` (app pwd)  |
-| `MAIL_TO`   | ✅       | `vyerra@icloud.com`              |
-| `SMTP_HOST` | optional | defaults to `smtp.gmail.com`     |
-| `SMTP_PORT` | optional | defaults to `587`                |
-| `MAIL_FROM` | optional | defaults to `SMTP_USER`          |
-
-### 4. Set your watchlist
-
-Edit [`config.json`](./config.json) and commit it:
-
-```json
-{
-  "watchlist": ["domino", "kapex", "ts 60", "ct 36"],
-  "alert_on_new": true,
-  "alert_on_sold_out": false
-}
+```
+https://<your-username>.github.io/festool-recon-monitor/
 ```
 
-- `watchlist` — case-insensitive keywords matched against product titles. A match → 🔥 urgent. Replace the examples with the tools you actually want. Leave `[]` to just get plain "new item" alerts.
-- `alert_on_new` — email for every new item on sale (not just watchlist). `true` per your choice.
-- `alert_on_sold_out` — also alert when items sell out. `false` = less noise.
+- Tick the tools you want 🔥 priority alerts for. Each keyword shows how many catalog items it matches, so you can tell if it's too broad/narrow.
+- Toggle "alert for any new item" and "alert on sell-out".
+- Click **Copy config.json**, then **Open config.json on GitHub**, paste, and **Commit**. Done — the next run uses it. (You're already logged into GitHub in your browser, so there's no token to manage.)
 
-### 5. Turn it on
+You can also just edit [`config.json`](./config.json) directly:
+```json
+{ "watchlist": ["domino", "kapex", "ts 60", "ct 36"], "alert_on_new": true, "alert_on_sold_out": false }
+```
+`watchlist` = case-insensitive substrings matched against product titles.
 
-The workflow is in [`.github/workflows/monitor.yml`](./.github/workflows/monitor.yml). After pushing:
+### 3. Turn it on
 
-1. Go to the **Actions** tab → enable workflows if prompted.
-2. Click **Festool Recon Monitor → Run workflow** to fire it immediately. The first run sends a one-time "monitor is live" summary of everything currently on sale, then only alerts on changes afterward.
+1. **Enable Pages:** repo **Settings → Pages → Source: Deploy from a branch → `main` / `/docs`** (or run the `gh api` command in the deploy notes).
+2. **Actions tab →** enable workflows if prompted → **Festool Recon Monitor → Run workflow** to fire immediately. The first run sends a one-time "monitor is live" summary, then only alerts on changes.
 3. After that it runs automatically every ~5 minutes (GitHub's minimum; often throttled to 5–15 min in practice).
 
 ---
 
-## Testing it locally (optional)
+## Secrets
 
-No secrets needed for a dry run:
+In **Settings → Secrets and variables → Actions** (or via `gh secret set <NAME>`):
+
+| Secret        | For    | Required | Notes |
+|---------------|--------|----------|-------|
+| `NTFY_TOPIC`  | ntfy   | ✅ (for ntfy) | your secret topic name |
+| `NTFY_SERVER` | ntfy   | optional | default `https://ntfy.sh` |
+| `NTFY_TOKEN`  | ntfy   | optional | only for protected/self-hosted topics |
+| `SMTP_USER`   | email  | ✅ (for email) | sending address |
+| `SMTP_PASS`   | email  | ✅ (for email) | app password |
+| `MAIL_TO`     | email  | ✅ (for email) | recipient (email or carrier SMS gateway) |
+| `SMTP_HOST`/`SMTP_PORT`/`MAIL_FROM` | email | optional | default Gmail `smtp.gmail.com:587` |
+
+At least one channel (ntfy **or** email) must be configured, or the run fails on purpose.
+
+---
+
+## Testing locally (optional)
 
 ```bash
-python3 festool_monitor.py --dry-run     # scrape + print what it WOULD send; no email, no state change
-```
-
-To verify your email actually works end-to-end:
-
-```bash
-export SMTP_USER="youraddress@gmail.com"
-export SMTP_PASS="your-app-password"
-export MAIL_TO="vyerra@icloud.com"
-python3 festool_monitor.py --test-email   # sends one test message and exits
+python3 festool_monitor.py --dry-run        # scrape + print; no send, no writes
+python3 festool_monitor.py --catalog-only   # just rebuild docs/catalog.json
+NTFY_TOPIC="your-topic" python3 festool_monitor.py --test   # send a test push
 ```
 
 ---
 
-## Tuning
+## Tuning & caveats
 
-- **Check more / less often** — edit the `cron` line in `.github/workflows/monitor.yml`. Currently `*/5 * * * *` = every 5 min, which is **GitHub's hard minimum** — you can't poll faster on Actions. Schedules are best-effort, so real spacing is often 5–15 min under load. To check less often, use e.g. `*/15 * * * *`.
-- **Less noise** — set `alert_on_new` to `false` to only get watchlist 🔥 alerts.
-- **More signal** — set `alert_on_sold_out` to `true`.
-
----
-
-## Cost & caveats
-
-- **Public repo** → GitHub Actions minutes are **free and unlimited**. No secrets live in the code (they're encrypted in GitHub Secrets), so a public repo is safe here.
-- **Private repo** → only ~2000 free Action-minutes/month. At a 10-min cadence you'd exceed that; use a `*/30` cron (every 30 min) to stay free, or accept usage charges.
-- GitHub **disables scheduled workflows after 60 days of repo inactivity** — the bot's own state commits keep it active, but if it ever pauses, just re-enable it in the Actions tab.
-- Scheduled runs are **best-effort**; expect occasional 5–20 min delays at the top of the hour.
-- True **iMessage** can only be sent from a logged-in Mac, so it isn't possible from a cloud runner. The carrier-SMS-gateway option above is the closest thing to a real text.
+- **Frequency** — edit the `cron` in `.github/workflows/monitor.yml`. `*/5 * * * *` is GitHub's hard minimum; schedules are best-effort so real spacing is often 5–15 min.
+- **Less noise** — set `alert_on_new` to `false` to get only watchlist 🔥 alerts. **More signal** — set `alert_on_sold_out` to `true`.
+- **Cost** — public repo ⇒ Actions minutes are free and unlimited. No secrets live in the code.
+- GitHub **disables scheduled workflows after 60 days of repo inactivity**; the bot's own commits keep it active, but re-enable in the Actions tab if it ever pauses.
+- True **iMessage** can't be sent from a cloud runner (needs a logged-in Mac). ntfy/SMS-gateway are the closest phone alerts.
 
 ---
 
@@ -148,4 +108,6 @@ python3 festool_monitor.py --test-email   # sends one test message and exits
 | `festool_monitor.py` | The monitor (pure Python stdlib, no dependencies). |
 | `config.json` | Your watchlist + alert toggles. |
 | `state.json` | Last-seen on-sale set (auto-updated by the bot). |
+| `docs/index.html` | The watchlist picker UI (served via GitHub Pages). |
+| `docs/catalog.json` | Product catalog cache for the UI (auto-updated by the bot). |
 | `.github/workflows/monitor.yml` | The scheduled GitHub Action. |

@@ -9,7 +9,7 @@ on:
   workflow_dispatch: {}   # adds a manual "Run workflow" button in the Actions tab
 
 permissions:
-  contents: write          # needed to commit state.json back to the repo
+  contents: write          # needed to commit state.json + docs/catalog.json back
 
 concurrency:
   group: festool-monitor
@@ -19,31 +19,32 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - uses: actions/checkout@v5
 
       - name: Run monitor
         env:
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}   # optional (default smtp.gmail.com)
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}   # optional (default 587)
-          SMTP_USER: ${{ secrets.SMTP_USER }}   # required
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}   # required (Gmail = App Password)
-          MAIL_FROM: ${{ secrets.MAIL_FROM }}   # optional (default = SMTP_USER)
-          MAIL_TO:   ${{ secrets.MAIL_TO }}     # required (email or carrier SMS gateway)
+          # --- ntfy (recommended: open-source, NO account/password/token) ---
+          NTFY_TOPIC:  ${{ secrets.NTFY_TOPIC }}    # required for ntfy
+          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}   # optional (default https://ntfy.sh)
+          NTFY_TOKEN:  ${{ secrets.NTFY_TOKEN }}    # optional (only for protected topics)
+          # --- email/SMTP (optional alternative or in addition) ---
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MAIL_TO:   ${{ secrets.MAIL_TO }}
         run: python3 festool_monitor.py
 
-      - name: Commit updated state
+      - name: Commit updated state + catalog
         if: always()
         run: |
-          if [[ -n "$(git status --porcelain state.json)" ]]; then
+          if [[ -n "$(git status --porcelain state.json docs/catalog.json)" ]]; then
             git config user.name  "festool-monitor[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add state.json
-            git commit -m "chore: update sale state [skip ci]"
+            git add state.json docs/catalog.json
+            git commit -m "chore: update sale state + catalog [skip ci]"
             git push
           else
-            echo "No state change to commit."
+            echo "No changes to commit."
           fi
