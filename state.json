@@ -1,23 +1,7 @@
 {
   "initialized": true,
-  "last_run": "Fri, 19 Jun 2026 13:56:45 +0000",
+  "last_run": "Fri, 19 Jun 2026 16:36:18 +0000",
   "on_sale": {
-    "cordless-delta-sander-dtsc-400-3-0-i-plus": {
-      "compare_at": 599.0,
-      "handle": "cordless-delta-sander-dtsc-400-3-0-i-plus",
-      "price": 479.2,
-      "title": "Cordless delta sander DTSC 400 3,0 I-Plus",
-      "type": "Sander",
-      "url": "https://www.festoolrecon.com/products/cordless-delta-sander-dtsc-400-3-0-i-plus"
-    },
-    "cordless-drill-t18-3-e-basic": {
-      "compare_at": 199.0,
-      "handle": "cordless-drill-t18-3-e-basic",
-      "price": 139.3,
-      "title": "Cordless Drill T18+3-E Basic",
-      "type": "Drill",
-      "url": "https://www.festoolrecon.com/products/cordless-drill-t18-3-e-basic"
-    },
     "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus": {
       "compare_at": 599.0,
       "handle": "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus",
@@ -25,14 +9,6 @@
       "title": "Cordless Jigsaw CARVEX PSBC 420 HPC 4,0 EBI-Plus",
       "type": "Jigsaw",
       "url": "https://www.festoolrecon.com/products/cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus"
-    },
-    "dust-extractor-cleantec-ct-36-e-ac-hepa": {
-      "compare_at": 985.0,
-      "handle": "dust-extractor-cleantec-ct-36-e-ac-hepa",
-      "price": 689.5,
-      "title": "Dust Extractor CLEANTEC CT 36 E AC HEPA",
-      "type": "Vac",
-      "url": "https://www.festoolrecon.com/products/dust-extractor-cleantec-ct-36-e-ac-hepa"
     },
     "dust-extractor-cleantec-ct-36-ei-ac-hepa": {
       "compare_at": 1099.0,
