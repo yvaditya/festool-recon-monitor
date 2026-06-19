@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Festool Recon — Watchlist Picker</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171c22; --panel2:#1e252d; --line:#2a323c;
+    --text:#e8edf2; --dim:#9aa7b4; --accent:#4ea1ff; --accent2:#1f6feb;
+    --sale:#2ea043; --watch:#f0883e; --chip:#243140;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent)}
+  header{padding:20px 18px 12px;max-width:1000px;margin:0 auto}
+  h1{margin:0 0 4px;font-size:22px}
+  .sub{color:var(--dim);font-size:13px}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 18px 80px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;margin:14px 0}
+  .panel h2{margin:0 0 10px;font-size:15px;color:var(--dim);
+    text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input[type=text],input[type=search],select{
+    background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:9px 11px;font-size:14px;outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  .grow{flex:1;min-width:160px}
+  button{background:var(--accent2);color:#fff;border:0;border-radius:8px;
+    padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer}
+  button.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--text)}
+  button:hover{filter:brightness(1.1)}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .chip{display:flex;align-items:center;gap:6px;background:var(--chip);
+    border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 12px}
+  .chip input{background:transparent;border:0;color:var(--watch);font-weight:700;
+    width:auto;min-width:40px;max-width:200px;padding:2px;font-size:14px}
+  .chip .cnt{color:var(--dim);font-size:12px}
+  .chip .x{cursor:pointer;color:var(--dim);background:var(--panel);border-radius:999px;
+    width:20px;height:20px;display:grid;place-items:center;font-size:13px}
+  .chip .x:hover{color:#fff;background:#b3243a}
+  .toggles{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;color:var(--dim);font-size:14px}
+  .toggles label{display:flex;gap:8px;align-items:center;cursor:pointer}
+  .stats{color:var(--dim);font-size:13px;margin:2px 0 0}
+  .grp{margin:16px 0 6px;color:var(--accent);font-size:13px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.04em}
+  .item{display:flex;gap:10px;align-items:flex-start;padding:8px 6px;
+    border-bottom:1px solid var(--line)}
+  .item:hover{background:var(--panel2)}
+  .item input[type=checkbox]{margin-top:3px;width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+  .item .t{flex:1}
+  .item .name{cursor:pointer}
+  .item .via{color:var(--watch);font-size:12px;margin-top:2px}
+  .badge{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;white-space:nowrap}
+  .badge.sale{background:rgba(46,160,67,.18);color:#3fb950;border:1px solid rgba(46,160,67,.4)}
+  .badge.sold{background:var(--panel2);color:var(--dim);border:1px solid var(--line)}
+  .price{color:var(--dim);font-size:12px;white-space:nowrap}
+  .price .now{color:var(--text);font-weight:600}
+  textarea{width:100%;height:160px;background:#0b0e12;color:#cfe;border:1px solid var(--line);
+    border-radius:8px;padding:10px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
+  .note{color:var(--dim);font-size:13px}
+  .ok{color:var(--sale)}
+  .steps{margin:8px 0 0;padding-left:18px;color:var(--dim);font-size:13px}
+  .steps li{margin:3px 0}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);
+    border-radius:6px;padding:1px 6px;font:12px ui-monospace,monospace;color:#cfe}
+</style>
+</head>
+<body>
+<header>
+  <h1>🪵 Festool Recon — Watchlist Picker</h1>
+  <div class="sub">Pick the tools you want a <b>🔥 priority alert</b> for. Everything else still triggers a normal alert when it comes on sale.
+    <span id="meta"></span></div>
+</header>
+
+<div class="wrap">
+
+  <div class="panel" id="howPanel">
+    <h2>How alerts reach you</h2>
+    <div class="note">Notifications are sent through <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a> — open-source, no account or password.
+      Install the <b>ntfy</b> app, subscribe to your secret topic, and set that topic as the <span class="pill">NTFY_TOPIC</span> GitHub secret. Alerts then pop up on your phone like a text.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Your watchlist <span style="text-transform:none;color:var(--watch)">🔥</span></h2>
+    <div class="chips" id="chips"></div>
+    <div class="row" style="margin-top:12px">
+      <input type="text" id="addKw" class="grow" placeholder="Add a keyword (e.g. domino, ts 60, ct 36) and press Enter">
+      <button id="addBtn">Add</button>
+    </div>
+    <div class="toggles">
+      <label><input type="checkbox" id="tNew"> Also alert me for <b>any</b> new item on sale</label>
+      <label><input type="checkbox" id="tSold"> Alert me when items <b>sell out</b></label>
+    </div>
+    <div class="stats" id="wstats"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Catalog — tick what to watch</h2>
+    <div class="row">
+      <input type="search" id="search" class="grow" placeholder="Search tools…">
+      <select id="typeSel"></select>
+      <label class="note" style="display:flex;gap:6px;align-items:center">
+        <input type="checkbox" id="onSaleOnly"> on sale now only</label>
+    </div>
+    <div id="list" style="margin-top:6px"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Save your watchlist</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="copyBtn">📋 Copy config.json</button>
+      <button id="ghBtn" class="ghost">✏️ Open config.json on GitHub</button>
+      <button id="dlBtn" class="ghost">⬇︎ Download</button>
+      <span id="saveMsg" class="ok"></span>
+    </div>
+    <div class="note">Credential-free save:</div>
+    <ol class="steps">
+      <li>Click <b>Copy config.json</b>.</li>
+      <li>Click <b>Open config.json on GitHub</b> (you're already logged in there).</li>
+      <li>Select-all in the editor, paste, and hit <b>Commit changes</b>. The next run uses it. ✅</li>
+    </ol>
+    <textarea id="out" readonly spellcheck="false" style="margin-top:10px"></textarea>
+  </div>
+
+</div>
+
+<script>
+const REPO = (location.hostname.endsWith("github.io")
+    ? location.hostname.split(".")[0] + "/" + location.pathname.split("/").filter(Boolean)[0]
+    : "yvaditya/festool-recon-monitor");
+const RAW_CONFIG = `https://raw.githubusercontent.com/${REPO}/main/config.json`;
+const EDIT_URL   = `https://github.com/${REPO}/edit/main/config.json`;
+
+let CATALOG = [];      // deduped products [{title,type,available,url,price,compare_at}]
+let watchlist = [];    // array of keyword strings
+let alertNew = true, alertSold = false;
+
+const $ = s => document.querySelector(s);
+const norm = s => (s||"").toLowerCase().trim();
+
+function modelKeyword(title){
+  const t = (title||"").replace(/\s+/g," ").trim();
+  let m = t.match(/\b([A-Z]{2,5})\s?-?\s?(\d{2,4})\b/) || t.match(/\b([A-Z]{1,5})\s?-?\s?(\d{2,4})\b/);
+  if(m) return (m[1] + " " + m[2]);
+  return t.split(" ").slice(0,3).join(" ");
+}
+function matchKw(title){ const t = norm(title); return watchlist.find(w => w && t.includes(norm(w))); }
+function countMatches(kw){ const k = norm(kw); if(!k) return 0; return CATALOG.filter(p => norm(p.title).includes(k)).length; }
+function money(x){ if(x==null) return ""; return Number.isInteger(x) ? "$"+x.toLocaleString() : "$"+x.toFixed(2); }
+
+async function load(){
+  // catalog: same-origin on Pages, fall back to raw
+  let cat = null;
+  for(const u of ["./catalog.json", `https://raw.githubusercontent.com/${REPO}/main/docs/catalog.json`]){
+    try{ const r = await fetch(u, {cache:"no-store"}); if(r.ok){ cat = await r.json(); break; } }catch(e){}
+  }
+  if(cat){
+    const seen = new Map();
+    for(const p of cat.products){
+      const key = norm(p.title);
+      const ex = seen.get(key);
+      if(!ex){ seen.set(key, {...p}); }
+      else { ex.available = ex.available || p.available; if(p.available){ ex.url=p.url; ex.price=p.price; ex.compare_at=p.compare_at; } }
+    }
+    CATALOG = [...seen.values()].sort((a,b)=> (a.type+a.title).toLowerCase() < (b.type+b.title).toLowerCase()? -1:1);
+    $("#meta").textContent = `· ${CATALOG.length} tools known · catalog updated ${cat.generated||""}`;
+  } else {
+    $("#meta").textContent = "· could not load catalog.json (run the Action once to generate it)";
+  }
+  // current config
+  try{
+    const r = await fetch(RAW_CONFIG, {cache:"no-store"});
+    if(r.ok){ const c = await r.json();
+      watchlist = (c.watchlist||[]).slice();
+      alertNew = c.alert_on_new !== false;
+      alertSold = c.alert_on_sold_out === true;
+    }
+  }catch(e){}
+  $("#tNew").checked = alertNew; $("#tSold").checked = alertSold;
+  buildTypeFilter(); renderAll();
+}
+
+function buildTypeFilter(){
+  const types = [...new Set(CATALOG.map(p=>p.type))].sort();
+  $("#typeSel").innerHTML = `<option value="">All types</option>` + types.map(t=>`<option>${t}</option>`).join("");
+}
+
+function renderChips(){
+  const c = $("#chips");
+  if(!watchlist.length){ c.innerHTML = `<span class="note">No watched keywords yet — tick items below or add one.</span>`; return; }
+  c.innerHTML = "";
+  watchlist.forEach((kw,i)=>{
+    const el = document.createElement("div"); el.className="chip";
+    el.innerHTML = `<input data-i="${i}" value="${kw.replace(/"/g,'&quot;')}">
+      <span class="cnt">${countMatches(kw)} match</span>
+      <span class="x" data-x="${i}" title="remove">✕</span>`;
+    c.appendChild(el);
+  });
+}
+
+function renderStats(){
+  const onSale = CATALOG.filter(p=>p.available);
+  const watchedOnSale = onSale.filter(p=>matchKw(p.title)).length;
+  $("#wstats").innerHTML = `Watching <b>${watchlist.length}</b> keyword(s) · ` +
+    `${CATALOG.filter(p=>matchKw(p.title)).length} catalog tools matched · ` +
+    `${onSale.length} on sale now (${watchedOnSale} watched).`;
+}
+
+function renderList(){
+  const q = norm($("#search").value), ty = $("#typeSel").value, saleOnly = $("#onSaleOnly").checked;
+  const rows = CATALOG.filter(p=>
+    (!q || norm(p.title).includes(q)) &&
+    (!ty || p.type===ty) &&
+    (!saleOnly || p.available));
+  const list = $("#list");
+  if(!rows.length){ list.innerHTML = `<div class="note" style="padding:12px 0">No matches.</div>`; return; }
+  let html = "", lastType = null;
+  for(const p of rows){
+    if(p.type !== lastType){ html += `<div class="grp">${p.type}</div>`; lastType = p.type; }
+    const via = matchKw(p.title);
+    const checked = via ? "checked" : "";
+    const badge = p.available
+      ? `<span class="badge sale">ON SALE</span> <span class="price"><span class="now">${money(p.price)}</span>${p.compare_at&&p.compare_at>p.price?` <s>${money(p.compare_at)}</s>`:""}</span>`
+      : `<span class="badge sold">sold</span>`;
+    html += `<div class="item">
+      <input type="checkbox" data-title="${p.title.replace(/"/g,'&quot;')}" ${checked}>
+      <div class="t"><div class="name"><a href="${p.url}" target="_blank" rel="noopener">${p.title}</a></div>
+        ${via?`<div class="via">🔥 watched via "${via}"</div>`:""}</div>
+      ${badge}
+    </div>`;
+  }
+  list.innerHTML = html;
+}
+
+function renderOut(){
+  const cfg = {
+    _comment:"watchlist = case-insensitive keywords matched against product titles. Generated by the picker UI.",
+    watchlist, alert_on_new: $("#tNew").checked, alert_on_sold_out: $("#tSold").checked
+  };
+  $("#out").value = JSON.stringify(cfg, null, 2) + "\n";
+}
+
+function renderAll(){ renderChips(); renderList(); renderStats(); renderOut(); }
+
+function addKeyword(kw){
+  kw = (kw||"").trim();
+  if(kw && !watchlist.some(w=>norm(w)===norm(kw))) watchlist.push(kw);
+  renderAll();
+}
+
+// --- events ---
+$("#addBtn").onclick = ()=>{ addKeyword($("#addKw").value); $("#addKw").value=""; };
+$("#addKw").addEventListener("keydown", e=>{ if(e.key==="Enter"){ addKeyword($("#addKw").value); $("#addKw").value=""; }});
+$("#search").addEventListener("input", renderList);
+$("#typeSel").addEventListener("change", renderList);
+$("#onSaleOnly").addEventListener("change", renderList);
+$("#tNew").addEventListener("change", renderOut);
+$("#tSold").addEventListener("change", renderOut);
+
+$("#chips").addEventListener("input", e=>{
+  if(e.target.dataset.i!=null){ watchlist[+e.target.dataset.i] = e.target.value;
+    e.target.nextElementSibling.textContent = countMatches(e.target.value)+" match";
+    renderList(); renderStats(); renderOut(); }
+});
+$("#chips").addEventListener("click", e=>{
+  if(e.target.dataset.x!=null){ watchlist.splice(+e.target.dataset.x,1); renderAll(); }
+});
+
+$("#list").addEventListener("change", e=>{
+  if(e.target.type!=="checkbox") return;
+  const title = e.target.dataset.title;
+  if(e.target.checked){ addKeyword(modelKeyword(title)); }
+  else { // remove every keyword that matches this title
+    const t = norm(title);
+    watchlist = watchlist.filter(w=> !t.includes(norm(w)));
+    renderAll();
+  }
+});
+
+$("#copyBtn").onclick = async ()=>{ renderOut();
+  try{ await navigator.clipboard.writeText($("#out").value); flash("Copied! Now click “Open config.json on GitHub”."); }
+  catch(e){ $("#out").select(); flash("Select-all + copy the box below."); } };
+$("#ghBtn").onclick = ()=> window.open(EDIT_URL, "_blank", "noopener");
+$("#dlBtn").onclick = ()=>{ renderOut();
+  const b = new Blob([$("#out").value], {type:"application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download="config.json"; a.click(); };
+
+function flash(msg){ const m=$("#saveMsg"); m.textContent=msg; setTimeout(()=>m.textContent="", 4000); }
+
+load();
+</script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 # local scratch / secrets
-*.html
+/homepage.html
+/oneanddone.html
 .env
 __pycache__/
 *.pyc
