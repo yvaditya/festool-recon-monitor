@@ -1,0 +1,6 @@
+# local scratch / secrets
+*.html
+.env
+__pycache__/
+*.pyc
+.DS_Store

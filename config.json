@@ -1,0 +1,11 @@
+{
+  "_comment": "watchlist = case-insensitive keywords matched against product titles. A match sends a 🔥 URGENT alert. These are EXAMPLES — replace with the tools you actually want. Leave [] to only get plain 'new item' alerts.",
+  "watchlist": [
+    "domino",
+    "kapex",
+    "ts 60",
+    "ct 36"
+  ],
+  "alert_on_new": true,
+  "alert_on_sold_out": false
+}

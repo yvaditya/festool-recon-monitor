@@ -1,0 +1,48 @@
+name: Festool Recon Monitor
+
+on:
+  schedule:
+    # Every 10 minutes. NOTE: GitHub schedules are best-effort and are often
+    # delayed 5-20 min under load. Tighten/loosen the cron as you like.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}   # adds a manual "Run workflow" button in the Actions tab
+
+permissions:
+  contents: write          # needed to commit state.json back to the repo
+
+concurrency:
+  group: festool-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run monitor
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}   # optional (default smtp.gmail.com)
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}   # optional (default 587)
+          SMTP_USER: ${{ secrets.SMTP_USER }}   # required
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}   # required (Gmail = App Password)
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}   # optional (default = SMTP_USER)
+          MAIL_TO:   ${{ secrets.MAIL_TO }}     # required (email or carrier SMS gateway)
+        run: python3 festool_monitor.py
+
+      - name: Commit updated state
+        if: always()
+        run: |
+          if [[ -n "$(git status --porcelain state.json)" ]]; then
+            git config user.name  "festool-monitor[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state.json
+            git commit -m "chore: update sale state [skip ci]"
+            git push
+          else
+            echo "No state change to commit."
+          fi
