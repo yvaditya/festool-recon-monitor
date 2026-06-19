@@ -1,15 +1,7 @@
 {
   "initialized": true,
-  "last_run": "Fri, 19 Jun 2026 21:37:39 +0000",
+  "last_run": "Fri, 19 Jun 2026 22:37:54 +0000",
   "on_sale": {
-    "copy-of-cordless-eccentric-sander-etsc-125-li-3-1-basic": {
-      "compare_at": 299.0,
-      "handle": "copy-of-cordless-eccentric-sander-etsc-125-li-3-1-basic",
-      "price": 209.3,
-      "title": "Cordless ETSC 125 Li 3,1-Basic",
-      "type": "Sander",
-      "url": "https://www.festoolrecon.com/products/copy-of-cordless-eccentric-sander-etsc-125-li-3-1-basic"
-    },
     "cordless-impact-drill-tid-18-basic-1": {
       "compare_at": 199.0,
       "handle": "cordless-impact-drill-tid-18-basic-1",
@@ -41,14 +33,6 @@
       "title": "Dust Extractor CT 15 HEPA",
       "type": "Vac",
       "url": "https://www.festoolrecon.com/products/dust-extractor-ct-15-hepa"
-    },
-    "etsc-2-125-4-0-i-plus": {
-      "compare_at": 639.0,
-      "handle": "etsc-2-125-4-0-i-plus",
-      "price": 511.2,
-      "title": "ETSC 2 125 4,0 I-Plus",
-      "type": "Sander",
-      "url": "https://www.festoolrecon.com/products/etsc-2-125-4-0-i-plus"
     },
     "random-orbital-sander-ets-125-req-plus": {
       "compare_at": 299.0,
