@@ -2,9 +2,10 @@ name: Festool Recon Monitor
 
 on:
   schedule:
-    # Every 10 minutes. NOTE: GitHub schedules are best-effort and are often
-    # delayed 5-20 min under load. Tighten/loosen the cron as you like.
-    - cron: "*/10 * * * *"
+    # Every 5 minutes (GitHub's minimum). NOTE: schedules are best-effort and
+    # GitHub often throttles/skips 5-min crons under load, so real spacing is
+    # frequently 5-15 min. This is the floor; you can't go faster on Actions.
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}   # adds a manual "Run workflow" button in the Actions tab
 
 permissions:

@@ -100,7 +100,7 @@ The workflow is in [`.github/workflows/monitor.yml`](./.github/workflows/monitor
 
 1. Go to the **Actions** tab → enable workflows if prompted.
 2. Click **Festool Recon Monitor → Run workflow** to fire it immediately. The first run sends a one-time "monitor is live" summary of everything currently on sale, then only alerts on changes afterward.
-3. After that it runs automatically every ~10 minutes.
+3. After that it runs automatically every ~5 minutes (GitHub's minimum; often throttled to 5–15 min in practice).
 
 ---
 
@@ -125,7 +125,7 @@ python3 festool_monitor.py --test-email   # sends one test message and exits
 
 ## Tuning
 
-- **Check more / less often** — edit the `cron` line in `.github/workflows/monitor.yml`. `*/10 * * * *` = every 10 min. Recon items can sell within minutes, so faster is better; but GitHub schedules are best-effort and 5-minute crons are often throttled.
+- **Check more / less often** — edit the `cron` line in `.github/workflows/monitor.yml`. Currently `*/5 * * * *` = every 5 min, which is **GitHub's hard minimum** — you can't poll faster on Actions. Schedules are best-effort, so real spacing is often 5–15 min under load. To check less often, use e.g. `*/15 * * * *`.
 - **Less noise** — set `alert_on_new` to `false` to only get watchlist 🔥 alerts.
 - **More signal** — set `alert_on_sold_out` to `true`.
 
