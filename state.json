@@ -1,7 +1,23 @@
 {
   "initialized": true,
-  "last_run": "Fri, 19 Jun 2026 18:21:38 +0000",
+  "last_run": "Fri, 19 Jun 2026 20:13:06 +0000",
   "on_sale": {
+    "copy-of-cordless-eccentric-sander-etsc-125-li-3-1-basic": {
+      "compare_at": 299.0,
+      "handle": "copy-of-cordless-eccentric-sander-etsc-125-li-3-1-basic",
+      "price": 209.3,
+      "title": "Cordless ETSC 125 Li 3,1-Basic",
+      "type": "Sander",
+      "url": "https://www.festoolrecon.com/products/copy-of-cordless-eccentric-sander-etsc-125-li-3-1-basic"
+    },
+    "cordless-impact-drill-tid-18-basic-1": {
+      "compare_at": 199.0,
+      "handle": "cordless-impact-drill-tid-18-basic-1",
+      "price": 159.2,
+      "title": "Cordless Impact Driver TID 18-Basic",
+      "type": "Drill",
+      "url": "https://www.festoolrecon.com/products/cordless-impact-drill-tid-18-basic-1"
+    },
     "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus": {
       "compare_at": 599.0,
       "handle": "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus",
@@ -9,6 +25,14 @@
       "title": "Cordless Jigsaw CARVEX PSBC 420 HPC 4,0 EBI-Plus",
       "type": "Jigsaw",
       "url": "https://www.festoolrecon.com/products/cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus"
+    },
+    "csc-sys-50-ebi-basic": {
+      "compare_at": 1499.0,
+      "handle": "csc-sys-50-ebi-basic",
+      "price": 1199.2,
+      "title": "Cordless Table Saw CSC SYS 50 EBI-Basic",
+      "type": "Saw",
+      "url": "https://www.festoolrecon.com/products/csc-sys-50-ebi-basic"
     },
     "dust-extractor-cleantec-ct-36-ei-ac-hepa": {
       "compare_at": 1099.0,
@@ -26,6 +50,14 @@
       "type": "Vac",
       "url": "https://www.festoolrecon.com/products/dust-extractor-ct-15-hepa"
     },
+    "etsc-2-125-4-0-i-plus": {
+      "compare_at": 639.0,
+      "handle": "etsc-2-125-4-0-i-plus",
+      "price": 511.2,
+      "title": "ETSC 2 125 4,0 I-Plus",
+      "type": "Sander",
+      "url": "https://www.festoolrecon.com/products/etsc-2-125-4-0-i-plus"
+    },
     "random-orbital-sander-ets-125-req-plus": {
       "compare_at": 299.0,
       "handle": "random-orbital-sander-ets-125-req-plus",
@@ -33,6 +65,14 @@
       "title": "Random Orbital Sander ETS 125 REQ-Plus",
       "type": "Sander",
       "url": "https://www.festoolrecon.com/products/random-orbital-sander-ets-125-req-plus"
+    },
+    "sysrock-radio-br10": {
+      "compare_at": 139.0,
+      "handle": "sysrock-radio-br10",
+      "price": 111.2,
+      "title": "SysRock Radio BR10",
+      "type": "Radio",
+      "url": "https://www.festoolrecon.com/products/sysrock-radio-br10"
     },
     "tsv-60-keb-f-plus": {
       "compare_at": 1059.0,
