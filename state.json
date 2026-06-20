@@ -1,6 +1,7 @@
 {
+  "featured": "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus",
   "initialized": true,
-  "last_run": "Sat, 20 Jun 2026 04:35:21 +0000",
+  "last_run": "Sat, 20 Jun 2026 04:47:51 +0000",
   "on_sale": {
     "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus": {
       "compare_at": 599.0,
@@ -9,38 +10,12 @@
       "title": "Cordless Jigsaw CARVEX PSBC 420 HPC 4,0 EBI-Plus",
       "type": "Jigsaw",
       "url": "https://www.festoolrecon.com/products/cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus"
-    },
-    "dust-extractor-cleantec-ct-36-ei-ac-hepa": {
-      "compare_at": 1099.0,
-      "handle": "dust-extractor-cleantec-ct-36-ei-ac-hepa",
-      "price": 879.2,
-      "title": "Dust Extractor CLEANTEC CT 36 EI AC HEPA",
-      "type": "Vac",
-      "url": "https://www.festoolrecon.com/products/dust-extractor-cleantec-ct-36-ei-ac-hepa"
-    },
-    "dust-extractor-ct-15-hepa": {
-      "compare_at": 449.0,
-      "handle": "dust-extractor-ct-15-hepa",
-      "price": 359.2,
-      "title": "Dust Extractor CT 15 HEPA",
-      "type": "Vac",
-      "url": "https://www.festoolrecon.com/products/dust-extractor-ct-15-hepa"
-    },
-    "random-orbital-sander-ets-125-req-plus": {
-      "compare_at": 299.0,
-      "handle": "random-orbital-sander-ets-125-req-plus",
-      "price": 209.3,
-      "title": "Random Orbital Sander ETS 125 REQ-Plus",
-      "type": "Sander",
-      "url": "https://www.festoolrecon.com/products/random-orbital-sander-ets-125-req-plus"
-    },
-    "tsv-60-keb-f-plus": {
-      "compare_at": 1059.0,
-      "handle": "tsv-60-keb-f-plus",
-      "price": 847.2,
-      "title": "Track Saw TSV 60 KEB-F-Plus",
-      "type": "Saw",
-      "url": "https://www.festoolrecon.com/products/tsv-60-keb-f-plus"
     }
-  }
+  },
+  "queued": [
+    "tsv-60-keb-f-plus",
+    "random-orbital-sander-ets-125-req-plus",
+    "dust-extractor-ct-15-hepa",
+    "dust-extractor-cleantec-ct-36-ei-ac-hepa"
+  ]
 }
