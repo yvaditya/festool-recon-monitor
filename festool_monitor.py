@@ -5,9 +5,13 @@ Festool Recon sale monitor.
 Polls festoolrecon.com (a Shopify store), figures out which items are currently
 for sale, diffs that against the last saved snapshot, and pushes a notification
 when:
+  - the CURRENT featured deal changes     (the item the site shows up front)
   - any NEW item comes on sale            (normal alert)
   - an item matching your watchlist       (urgent alert)
   - an item sells out / disappears        (optional, off by default)
+
+Every notification also lists everything currently on sale (⭐ current deal and
+🔥 watched items first).
 
 Notification channels (use either or both; at least one required):
   - ntfy.sh  -> open-source push to your phone, NO account/password/token.
@@ -28,6 +32,7 @@ Local testing:
 import argparse
 import json
 import os
+import re
 import smtplib
 import ssl
 import sys
@@ -38,11 +43,13 @@ from email.message import EmailMessage
 from email.utils import formatdate
 
 BASE = "https://www.festoolrecon.com"
-USER_AGENT = "Mozilla/5.0 (compatible; festool-recon-monitor/2.0; +github-actions)"
+USER_AGENT = "Mozilla/5.0 (compatible; festool-recon-monitor/3.0; +github-actions)"
 STATE_FILE = "state.json"
 CONFIG_FILE = "config.json"
 CATALOG_FILE = "docs/catalog.json"
-BROWSE_URL = f"{BASE}/collections/oneanddone"
+COLLECTION = "oneanddone"
+BROWSE_URL = f"{BASE}/collections/{COLLECTION}"
+MAX_LIST = 25  # cap the "on sale now" list so a big sale doesn't make a giant push
 
 
 def log(*args):
@@ -67,6 +74,12 @@ def fetch_json(url, retries=3, backoff=2.0):
             if attempt < retries:
                 time.sleep(backoff * attempt)
     raise RuntimeError(f"could not fetch {url}: {last_err}")
+
+
+def fetch_text(url):
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return resp.read().decode("utf-8", "ignore")
 
 
 def fetch_all_products():
@@ -117,33 +130,66 @@ def variant_summary(product):
     return price, compare_at, available
 
 
-def on_sale_items(products):
-    """Map handle -> item dict for every product that is buyable right now."""
-    items = {}
-    for p in products:
+def fetch_collection_order():
+    """Ordered list of on-sale handles from the curated OneAndDone queue."""
+    try:
+        data = fetch_json(f"{BASE}/collections/{COLLECTION}/products.json?limit=250")
+    except RuntimeError as err:
+        log(f"  collection fetch failed: {err}")
+        return []
+    order = []
+    for p in data.get("products", []):
         if is_placeholder(p):
             continue
-        price, compare_at, available = variant_summary(p)
-        if not available:
+        _, _, available = variant_summary(p)
+        if available and p.get("handle"):
+            order.append(p["handle"])
+    return order
+
+
+def fetch_homepage_buyable():
+    """Handles the homepage actually lists for sale.
+
+    On festoolrecon.com you can ONLY buy what the homepage shows; the rest of the
+    OneAndDone collection is just the upcoming queue. Returns an ordered, unique
+    list of handles, or None if the homepage couldn't be fetched.
+    """
+    try:
+        html = fetch_text(BASE)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as err:
+        log(f"  homepage fetch failed: {err}")
+        return None
+    seen, out = set(), []
+    for h in re.findall(r"/products/([a-z0-9][a-z0-9-]*)", html):
+        if h not in seen:
+            seen.add(h)
+            out.append(h)
+    return out
+
+
+def buyable_items(handles, prod_by_handle):
+    """Build the on-sale dict (handle -> item) from buyable handles, in order."""
+    items = {}
+    for h in handles:
+        p = prod_by_handle.get(h)
+        if not p or is_placeholder(p):
             continue
+        price, compare_at, _ = variant_summary(p)
         if price is not None and price < 1:  # skip $0.01 placeholder-style entries
             continue
-        handle = p.get("handle")
-        if not handle:
-            continue
-        items[handle] = {
-            "handle": handle,
+        items[h] = {
+            "handle": h,
             "title": (p.get("title") or "").strip(),
             "price": price,
             "compare_at": compare_at,
             "type": (p.get("product_type") or "").strip(),
-            "url": f"{BASE}/products/{handle}",
+            "url": f"{BASE}/products/{h}",
         }
     return items
 
 
-def build_catalog(products):
-    """Full catalog (sold + on-sale) for the picker UI."""
+def build_catalog(products, buyable=frozenset(), queued=frozenset()):
+    """Full catalog for the picker UI, flagged buyable (homepage) / queued (collection)."""
     items = []
     for p in products:
         if is_placeholder(p):
@@ -156,7 +202,9 @@ def build_catalog(products):
             "title": (p.get("title") or "").strip(),
             "type": (p.get("product_type") or "").strip() or "Other",
             "handle": handle,
-            "available": bool(available),
+            "available": bool(available),                          # has inventory in Shopify
+            "buyable": handle in buyable,                          # purchasable now (on homepage)
+            "queued": handle in queued and handle not in buyable,  # upcoming in the queue
             "price": price,
             "compare_at": compare_at,
             "url": f"{BASE}/products/{handle}",
@@ -165,8 +213,8 @@ def build_catalog(products):
     return items
 
 
-def write_catalog(products):
-    catalog = build_catalog(products)
+def write_catalog(products, buyable=frozenset(), queued=frozenset()):
+    catalog = build_catalog(products, buyable, queued)
     os.makedirs(os.path.dirname(CATALOG_FILE), exist_ok=True)
     payload = {"generated": formatdate(localtime=True), "count": len(catalog), "products": catalog}
     with open(CATALOG_FILE, "w", encoding="utf-8") as f:
@@ -177,32 +225,71 @@ def write_catalog(products):
 # --------------------------------------------------------------------------- #
 # Watchlist + formatting
 # --------------------------------------------------------------------------- #
+def _squash(s):
+    """Lowercase and strip non-alphanumerics so 'T 18' matches 'T18+3-E'."""
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
 def watchlist_hits(title, watchlist):
-    t = title.lower()
-    return [w for w in watchlist if w.strip() and w.strip().lower() in t]
+    t = _squash(title)
+    return [w for w in watchlist if _squash(w) and _squash(w) in t]
+
+
+def is_watched(item, watchlist):
+    return bool(watchlist_hits(item["title"], watchlist))
+
+
+def money(x):
+    if x is None:
+        return ""
+    return f"${x:,.0f}" if float(x).is_integer() else f"${x:,.2f}"
 
 
 def fmt_price(price, compare_at):
+    """Compact price like '$689 (-30%)'."""
     if price is None:
         return ""
-
-    def money(x):
-        return f"${x:,.0f}" if float(x).is_integer() else f"${x:,.2f}"
-
     base = money(price)
     if compare_at and compare_at > price:
         pct = round((1 - price / compare_at) * 100)
-        return f"{base} (was {money(compare_at)}, -{pct}%)"
+        return f"{base} (-{pct}%)"
     return base
 
 
-def fmt_item(item, bullet="-"):
-    price = fmt_price(item.get("price"), item.get("compare_at"))
-    line = f"{bullet} {item['title']}"
-    if price:
-        line += f" - {price}"
-    line += f"\n  {item['url']}"
-    return line
+def sorted_current(current, watchlist, featured_handle=None):
+    """Featured first, then watched, then alphabetical."""
+    return sorted(
+        current.values(),
+        key=lambda it: (
+            0 if it["handle"] == featured_handle else 1,
+            0 if is_watched(it, watchlist) else 1,
+            it["title"].lower(),
+        ),
+    )
+
+
+def sale_list(current, watchlist, *, emoji, with_url, featured_handle=None):
+    """The 'on sale now' block, formatted for a channel."""
+    items = sorted_current(current, watchlist, featured_handle)
+    head = ("\U0001f6d2 " if emoji else "") + f"On sale now ({len(current)}):"
+    lines = [head]
+    for it in items[:MAX_LIST]:
+        featured = it["handle"] == featured_handle
+        watched = is_watched(it, watchlist)
+        if emoji:
+            mark = ("⭐" if featured else "") + ("\U0001f525" if watched else "")
+            mark = mark or "•"
+        else:
+            tags = ([" CURRENT"] if featured else []) + (["WATCH"] if watched else [])
+            mark = ("[" + "/".join(t.strip() for t in tags) + "]") if tags else "-"
+        price = fmt_price(it.get("price"), it.get("compare_at"))
+        line = f"{mark} {it['title']}" + (f" — {price}" if price else "")
+        if with_url:
+            line += f"\n   {it['url']}"
+        lines.append(line)
+    if len(items) > MAX_LIST:
+        lines.append(f"…and {len(items) - MAX_LIST} more")
+    return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------- #
@@ -228,16 +315,23 @@ def enabled_channels(env):
     return chans
 
 
-def send_ntfy(env, title, body, urgent=False, click=None):
+def send_ntfy(env, title, body, urgent=False, click=None, actions=None, tags="bell"):
     server = env["NTFY_SERVER"].rstrip("/")
     url = f"{server}/{env['NTFY_TOPIC']}"
     headers = {
-        "Title": title.encode("ascii", "ignore").decode().replace("\n", " ")[:250],
-        "Priority": "5" if urgent else "4",
-        "Tags": "rotating_light,fire" if urgent else "package",
+        # header values must be latin-1; keep the Title ASCII (emoji come from Tags)
+        "Title": title.encode("ascii", "ignore").decode().replace("\n", " ").strip()[:250],
+        "Priority": "5" if urgent else "default",
+        "Tags": tags,
     }
     if click:
         headers["Click"] = click
+    if actions:
+        parts = []
+        for label, aurl in actions[:3]:
+            lbl = label.replace(",", " ").replace(";", " ").replace('"', "")
+            parts.append(f'view, "{lbl}", {aurl}, clear=true')
+        headers["Actions"] = "; ".join(parts)
     if env.get("NTFY_TOKEN"):
         headers["Authorization"] = f"Bearer {env['NTFY_TOKEN']}"
     req = urllib.request.Request(url, data=body.encode("utf-8"), headers=headers, method="POST")
@@ -272,12 +366,15 @@ def send_email(env, subject, body):
             s.send_message(msg, from_addr=mail_from, to_addrs=recipients)
 
 
-def notify(args, env, title, body, urgent=False, click=None):
-    """Send to every configured channel. Returns True if at least one succeeded."""
+def notify(args, env, msg):
+    """Send a composed message dict to every configured channel."""
     if args.dry_run:
-        log("\n=== DRY RUN — would notify ===")
-        log(("[URGENT] " if urgent else "") + title)
-        log(body)
+        log("\n=== DRY RUN — ntfy push ===")
+        log("Title:", msg["title"], "  [urgent]" if msg["urgent"] else "", " tags:", msg["tags"])
+        log(msg["ntfy_body"])
+        log("--- email version ---")
+        log("Subject:", msg["email_subject"])
+        log(msg["email_body"])
         log("=== end dry run ===\n")
         return True
 
@@ -293,10 +390,10 @@ def notify(args, env, title, body, urgent=False, click=None):
     for ch in chans:
         try:
             if ch == "ntfy":
-                send_ntfy(env, title, body, urgent=urgent, click=click)
+                send_ntfy(env, msg["title"], msg["ntfy_body"], urgent=msg["urgent"],
+                          click=msg["click"], actions=msg["actions"], tags=msg["tags"])
             elif ch == "email":
-                subject = ("[WATCH] " if urgent else "") + title + " — Festool Recon"
-                send_email(env, subject, body)
+                send_email(env, msg["email_subject"], msg["email_body"])
             log(f"sent via {ch}")
             ok = True
         except Exception as err:  # noqa: BLE001 - report and try other channels
@@ -304,6 +401,113 @@ def notify(args, env, title, body, urgent=False, click=None):
     if not ok:
         raise RuntimeError("all notification channels failed")
     return ok
+
+
+# --------------------------------------------------------------------------- #
+# Message composition
+# --------------------------------------------------------------------------- #
+def compose(current, watchlist, *, featured=None, featured_changed=False,
+            urgent=None, normal=None, gone=None, alert_on_sold_out=False,
+            baseline=False, queued_count=0, queued_watch=None):
+    urgent = urgent or []
+    normal = normal or []
+    gone = gone or []
+    queued_watch = queued_watch or []
+    added = urgent + normal
+    featured_handle = featured["handle"] if featured else None
+    featured_watched = bool(featured) and is_watched(featured, watchlist)
+    urgent_flag = bool(urgent) or (featured_changed and featured_watched)
+
+    def priced(item):
+        p = fmt_price(item.get("price"), item.get("compare_at"))
+        return f"{item['title']}" + (f" — {p}" if p else "")
+
+    # ---- headline (title) + one-line summary (lede) ----
+    if baseline:
+        title = f"Monitoring {len(current)} Festool Recon deals"
+        lede = f"Current deal: {priced(featured)}" if featured else ""
+        tags = "white_check_mark"
+    elif featured_changed and featured:
+        title = f"Now on sale: {featured['title']}"
+        lede = f"Current deal changed → {priced(featured)}"
+        if added:
+            lede += f"; {len(added)} new on sale"
+        tags = "fire" if urgent_flag else "star"
+    elif urgent and len(urgent) == 1 and not normal:
+        title = f"{urgent[0]['title']} on sale!"
+        lede = f"{priced(urgent[0])} just came on sale"
+        tags = "fire"
+    elif added:
+        kind = ("watched + new" if urgent and normal
+                else "watched on sale" if urgent else "new deals")
+        title = f"{len(added)} {kind} on Festool Recon"
+        names = ", ".join(i["title"] for i in added[:2])
+        extra = f" +{len(added) - 2} more" if len(added) > 2 else ""
+        lede = f"{len(added)} new on sale: {names}{extra}"
+        tags = "fire" if urgent else "shopping_cart"
+    elif queued_watch:
+        title = f"Coming up: {queued_watch[0]['title']}"
+        names = ", ".join(i["title"] for i in queued_watch[:2])
+        lede = f"On your watchlist, queued (not buyable yet): {names}"
+        tags = "eyes"
+    elif gone:
+        title = f"{len(gone)} sold out on Festool Recon"
+        lede = ", ".join(g.get("title", "?") for g in gone[:3])
+        tags = "checkered_flag"
+    else:
+        title, lede, tags = "Festool Recon update", "", "bell"
+    if alert_on_sold_out and gone and not baseline and added:
+        lede += f"; {len(gone)} sold out"
+
+    # ---- ntfy body (emoji, no raw URLs; links via action buttons) ----
+    ntfy_parts = []
+    if lede:
+        flag = "\U0001f525 " if urgent_flag else "⭐ " if featured_changed else "\U0001f195 " if added else ""
+        ntfy_parts.append(flag + lede)
+    ntfy_parts.append(sale_list(current, watchlist, emoji=True, with_url=False,
+                                featured_handle=featured_handle))
+    if queued_watch:
+        ntfy_parts.append("👀 Coming up on your watchlist:\n" + "\n".join(
+            "• " + i["title"] + (f" — {fmt_price(i.get('price'), i.get('compare_at'))}"
+                                 if i.get("price") is not None else "")
+            for i in queued_watch))
+    if queued_count:
+        ntfy_parts.append(f"➕ {queued_count} more queued (not buyable yet)")
+    ntfy_body = "\n\n".join(ntfy_parts)
+
+    # ---- email body (plain text, with URLs) ----
+    email_parts = []
+    if lede:
+        email_parts.append(("[WATCH] " if urgent_flag else "") + lede)
+    email_parts.append(sale_list(current, watchlist, emoji=False, with_url=True,
+                                 featured_handle=featured_handle))
+    if queued_watch:
+        email_parts.append("Coming up on your watchlist:\n" + "\n".join(
+            "- " + i["title"] + (f" — {fmt_price(i.get('price'), i.get('compare_at'))}"
+                                 if i.get("price") is not None else "") + f"\n   {i['url']}"
+            for i in queued_watch))
+    if queued_count:
+        email_parts.append(f"+{queued_count} more queued (not buyable yet)")
+    email_parts.append(f"Browse: {BROWSE_URL}")
+    email_body = "\n\n".join(email_parts)
+    email_subject = ("[WATCH] " if urgent_flag else "") + title
+
+    # ---- tap targets ----
+    spotlight = featured if (featured_changed and featured) else (added[0] if added else featured)
+    click = spotlight["url"] if (spotlight and spotlight.get("url")) else BROWSE_URL
+    actions = []
+    if spotlight and spotlight.get("url"):
+        actions.append(("Buy " + _short(spotlight["title"]), spotlight["url"]))
+    actions.append(("All deals", BROWSE_URL))
+
+    return {
+        "title": title, "urgent": urgent_flag, "click": click, "actions": actions, "tags": tags,
+        "ntfy_body": ntfy_body, "email_subject": email_subject, "email_body": email_body,
+    }
+
+
+def _short(title, n=18):
+    return title if len(title) <= n else title[:n - 1].rstrip() + "…"
 
 
 # --------------------------------------------------------------------------- #
@@ -320,29 +524,20 @@ def load_json(path, default):
         return default
 
 
-def write_state(args, current):
+def write_state(args, current, featured_handle, queued_handles):
     if args.dry_run:
         log("(dry-run) not writing state")
         return
-    payload = {"on_sale": current, "last_run": formatdate(localtime=True), "initialized": True}
+    payload = {
+        "on_sale": current,
+        "featured": featured_handle,
+        "queued": list(queued_handles),
+        "last_run": formatdate(localtime=True),
+        "initialized": True,
+    }
     with open(args.state, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False, sort_keys=True)
-    log(f"state written: {len(current)} items on sale")
-
-
-# --------------------------------------------------------------------------- #
-# Message builders
-# --------------------------------------------------------------------------- #
-def build_baseline_body(current, watchlist):
-    lines = [f"Festool Recon monitor is live. {len(current)} item(s) currently on sale:\n"]
-    for item in sorted(current.values(), key=lambda x: x["title"].lower()):
-        hits = watchlist_hits(item["title"], watchlist)
-        lines.append(fmt_item(item, bullet="[WATCH]" if hits else "-"))
-    lines.append("\nFrom now on you'll get an alert when something NEW comes on sale")
-    lines.append("([WATCH] = matches your watchlist).")
-    lines.append(f"Watchlist: {', '.join(watchlist) if watchlist else '(empty — pick items in the web UI)'}")
-    lines.append(f"\nBrowse: {BROWSE_URL}")
-    return "\n".join(lines)
+    log(f"state written: {len(current)} buyable, featured={featured_handle}, queued={len(queued_handles)}")
 
 
 # --------------------------------------------------------------------------- #
@@ -363,9 +558,13 @@ def main():
     env = channel_config()
 
     if args.test:
-        notify(args, env, "Festool Recon monitor test",
-               "If you're reading this on your phone, notifications work. 🎉",
-               urgent=False, click=BROWSE_URL)
+        notify(args, env, {
+            "title": "Festool Recon monitor test", "urgent": False, "tags": "white_check_mark",
+            "click": BROWSE_URL, "actions": [("All deals", BROWSE_URL)],
+            "ntfy_body": "✅ Notifications work. You'll get a clean list like this when tools come on sale.",
+            "email_subject": "Festool Recon monitor test",
+            "email_body": "Notifications work. You'll get a clean list like this when tools come on sale.",
+        })
         log("test notification sent")
         return 0
 
@@ -373,19 +572,35 @@ def main():
     watchlist = config.get("watchlist") or []
     alert_on_new = config.get("alert_on_new", True)
     alert_on_sold_out = config.get("alert_on_sold_out", False)
+    alert_on_queued_watch = config.get("alert_on_queued_watch", False)
 
     log("fetching products...")
     products = fetch_all_products()
-    current = on_sale_items(products)
-    log(f"{len(products)} products scanned, {len(current)} currently on sale")
+    prod_by_handle = {p["handle"]: p for p in products if p.get("handle")}
+
+    # You can only BUY what the homepage lists; the rest of the queue isn't purchasable yet.
+    homepage = fetch_homepage_buyable()
+    collection_order = fetch_collection_order()
+    current = buyable_items(list(homepage) if homepage else [], prod_by_handle)
+    if not current and collection_order:        # fallback: front of the curated queue
+        for h in collection_order:
+            if h in prod_by_handle:
+                current = buyable_items([h], prod_by_handle)
+                break
+    featured_handle = next(iter(current), None)
+    queued = [h for h in collection_order if h not in current]
+    log(f"{len(products)} scanned; buyable now: {list(current) or '(none)'}; {len(queued)} queued")
 
     if not args.dry_run:
-        write_catalog(products)
+        write_catalog(products, buyable=set(current), queued=set(collection_order))
     if args.catalog_only:
         return 0
 
-    state = load_json(args.state, {"on_sale": {}, "last_run": None, "initialized": False})
+    featured = current.get(featured_handle) if featured_handle else None
+
+    state = load_json(args.state, {"on_sale": {}, "featured": None, "last_run": None, "initialized": False})
     previous = state.get("on_sale") or {}
+    prev_featured = state.get("featured")
     initialized = bool(state.get("initialized") and state.get("last_run"))
 
     # Guard: an empty result usually means the site blocked us / had a hiccup.
@@ -396,9 +611,9 @@ def main():
 
     # First ever run: send a one-time summary, set the baseline, then stop.
     if not initialized:
-        notify(args, env, f"Monitor live — {len(current)} on sale now",
-               build_baseline_body(current, watchlist), urgent=False, click=BROWSE_URL)
-        write_state(args, current)
+        notify(args, env, compose(current, watchlist, featured=featured,
+                                  baseline=True, queued_count=len(queued)))
+        write_state(args, current, featured_handle)
         return 0
 
     new_handles = [h for h in current if h not in previous]
@@ -407,41 +622,34 @@ def main():
     urgent, normal = [], []
     for h in new_handles:
         item = current[h]
-        (urgent if watchlist_hits(item["title"], watchlist) else normal).append(item)
+        (urgent if is_watched(item, watchlist) else normal).append(item)
+    gone = [previous[h] for h in gone_handles]
+    featured_changed = bool(featured_handle and prev_featured and featured_handle != prev_featured)
 
-    sections, title_bits, notify_now, click = [], [], False, BROWSE_URL
+    # watched tools that JUST entered the queue (coming up, not buyable yet)
+    prev_queued = set(state.get("queued") or [])
+    new_queued = [h for h in queued if h not in prev_queued and h not in previous]
+    queued_watch = [it for it in buyable_items(new_queued, prod_by_handle).values()
+                    if is_watched(it, watchlist)]
 
-    if urgent:
-        notify_now = True
-        title_bits.append(f"{len(urgent)} watched")
-        click = urgent[0]["url"]
-        sections.append("ON YOUR WATCHLIST — ON SALE NOW:\n" +
-                        "\n".join(fmt_item(i, bullet="[WATCH]") for i in urgent))
-
-    if alert_on_new and normal:
-        notify_now = True
-        title_bits.append(f"{len(normal)} new")
-        if not urgent:
-            click = normal[0]["url"]
-        sections.append("New on sale:\n" + "\n".join(fmt_item(i) for i in normal))
-
-    if alert_on_sold_out and gone_handles:
-        notify_now = True
-        gone = [previous[h] for h in gone_handles]
-        title_bits.append(f"{len(gone)} sold out")
-        sections.append("Sold out / removed:\n" +
-                        "\n".join(f"- {g.get('title', g)}" for g in gone))
-
+    notify_now = (featured_changed or bool(urgent)
+                  or (alert_on_new and normal) or (alert_on_sold_out and gone)
+                  or (alert_on_queued_watch and queued_watch))
     if not notify_now:
-        log(f"no notable changes (new={len(new_handles)}, gone={len(gone_handles)})")
-        write_state(args, current)  # advance baseline silently
+        log(f"no notable changes (new={len(new_handles)}, gone={len(gone_handles)}, "
+            f"featured_changed={featured_changed}, queued_watch={len(queued_watch)})")
+        write_state(args, current, featured_handle, queued)  # advance baseline silently
         return 0
 
-    title = " + ".join(title_bits) + " on Festool Recon"
-    body = "\n\n".join(sections) + f"\n\n{len(current)} item(s) on sale total.\nBrowse: {BROWSE_URL}"
-
-    notify(args, env, title, body, urgent=bool(urgent), click=click)  # raises -> state not advanced
-    write_state(args, current)
+    msg = compose(current, watchlist,
+                  featured=featured, featured_changed=featured_changed,
+                  urgent=urgent,
+                  normal=normal if alert_on_new else [],
+                  gone=gone, alert_on_sold_out=alert_on_sold_out,
+                  queued_watch=queued_watch if alert_on_queued_watch else [],
+                  queued_count=len(queued))
+    notify(args, env, msg)  # raises if all channels fail -> state not advanced
+    write_state(args, current, featured_handle, queued)
     return 0
 
 

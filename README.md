@@ -10,15 +10,15 @@ Watches [festoolrecon.com](https://www.festoolrecon.com) and **pushes a notifica
 
 ## How it works
 
-Festool Recon is a Shopify store; its catalog is exposed as JSON. A product that is `available: true` (and isn't the *"Wow, that went fast!!!"* placeholder) is **on sale right now**; when it sells it flips to `available: false` (the "greyed out / done" state on the site).
+Festool Recon runs a "One and Done" model: **you can only buy what the homepage shows** — usually a single featured item. The rest of the OneAndDone collection is the upcoming **queue** (visible, but not purchasable yet).
 
 Every run, `festool_monitor.py`:
-1. Fetches all products, builds the current **on-sale set**, and writes `docs/catalog.json` (so the picker UI has data).
-2. Diffs the on-sale set against `state.json` (committed in this repo).
-3. Sends a notification: **new item** → normal alert; **new item matching your watchlist** → 🔥 urgent; **sold out** → optional.
-4. Saves the new state back so the next run remembers.
+1. Reads the homepage to find what's actually **buyable now**, pulls prices from the Shopify product feed, and records the rest of the collection as **queued**. Writes `docs/catalog.json` for the picker UI.
+2. Diffs the buyable set against `state.json` (committed in this repo).
+3. Notifies when: the **current deal changes**, a **new item becomes buyable**, or a **watched item becomes buyable** (🔥 urgent). Sell-outs are optional. Each alert lists everything buyable now (⭐ current, 🔥 watched) and a count of queued items.
+4. Saves the new state so the next run remembers.
 
-State only advances **after** a successful send, so a transient failure retries instead of dropping an alert.
+Keyword matching is space/punctuation-insensitive, so `T 18` matches `T18+3-E`. State only advances **after** a successful send, so a transient failure retries instead of dropping an alert.
 
 ---
 

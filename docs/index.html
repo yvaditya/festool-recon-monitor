@@ -55,6 +55,7 @@
   .item .via{color:var(--watch);font-size:12px;margin-top:2px}
   .badge{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;white-space:nowrap}
   .badge.sale{background:rgba(46,160,67,.18);color:#3fb950;border:1px solid rgba(46,160,67,.4)}
+  .badge.queued{background:rgba(240,136,62,.15);color:#f0883e;border:1px solid rgba(240,136,62,.4)}
   .badge.sold{background:var(--panel2);color:var(--dim);border:1px solid var(--line)}
   .price{color:var(--dim);font-size:12px;white-space:nowrap}
   .price .now{color:var(--text);font-weight:600}
@@ -91,7 +92,8 @@
       <button id="addBtn">Add</button>
     </div>
     <div class="toggles">
-      <label><input type="checkbox" id="tNew"> Also alert me for <b>any</b> new item on sale</label>
+      <label><input type="checkbox" id="tNew"> Also alert me when <b>any</b> item becomes buyable</label>
+      <label><input type="checkbox" id="tQueued"> Heads-up when a watched tool is <b>queued</b> (before it's buyable)</label>
       <label><input type="checkbox" id="tSold"> Alert me when items <b>sell out</b></label>
     </div>
     <div class="stats" id="wstats"></div>
@@ -99,11 +101,16 @@
 
   <div class="panel">
     <h2>Catalog — tick what to watch</h2>
+    <div class="note" style="margin:-4px 0 8px">
+      <span class="badge sale">ON SALE</span> buyable now ·
+      <span class="badge queued">queued</span> coming up (not buyable yet) ·
+      <span class="badge sold">sold</span> gone
+    </div>
     <div class="row">
       <input type="search" id="search" class="grow" placeholder="Search tools…">
       <select id="typeSel"></select>
       <label class="note" style="display:flex;gap:6px;align-items:center">
-        <input type="checkbox" id="onSaleOnly"> on sale now only</label>
+        <input type="checkbox" id="onSaleOnly"> buyable / queued only</label>
     </div>
     <div id="list" style="margin-top:6px"></div>
   </div>
@@ -136,19 +143,22 @@ const EDIT_URL   = `https://github.com/${REPO}/edit/main/config.json`;
 
 let CATALOG = [];      // deduped products [{title,type,available,url,price,compare_at}]
 let watchlist = [];    // array of keyword strings
-let alertNew = true, alertSold = false;
+let alertNew = true, alertSold = false, alertQueued = false;
 
 const $ = s => document.querySelector(s);
 const norm = s => (s||"").toLowerCase().trim();
+// space/punctuation-insensitive key so "T 18" matches "T18+3-E", "ct 36" matches "CT 36 E", etc.
+const squash = s => (s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
 
 function modelKeyword(title){
   const t = (title||"").replace(/\s+/g," ").trim();
-  let m = t.match(/\b([A-Z]{2,5})\s?-?\s?(\d{2,4})\b/) || t.match(/\b([A-Z]{1,5})\s?-?\s?(\d{2,4})\b/);
-  if(m) return (m[1] + " " + m[2]);
+  // grab the model token verbatim (incl. +N / -X / -NNN variant suffixes) so it always matches the title
+  let m = t.match(/\b[A-Z]{2,5}\s?\d{2,4}(?:[+\-/]\w+)*/) || t.match(/\b[A-Z]{1,5}\s?\d{2,4}(?:[+\-/]\w+)*/);
+  if(m) return m[0].trim();
   return t.split(" ").slice(0,3).join(" ");
 }
-function matchKw(title){ const t = norm(title); return watchlist.find(w => w && t.includes(norm(w))); }
-function countMatches(kw){ const k = norm(kw); if(!k) return 0; return CATALOG.filter(p => norm(p.title).includes(k)).length; }
+function matchKw(title){ const t = squash(title); return watchlist.find(w => squash(w) && t.includes(squash(w))); }
+function countMatches(kw){ const k = squash(kw); if(!k) return 0; return CATALOG.filter(p => squash(p.title).includes(k)).length; }
 function money(x){ if(x==null) return ""; return Number.isInteger(x) ? "$"+x.toLocaleString() : "$"+x.toFixed(2); }
 
 async function load(){
@@ -163,7 +173,12 @@ async function load(){
       const key = norm(p.title);
       const ex = seen.get(key);
       if(!ex){ seen.set(key, {...p}); }
-      else { ex.available = ex.available || p.available; if(p.available){ ex.url=p.url; ex.price=p.price; ex.compare_at=p.compare_at; } }
+      else {
+        ex.available = ex.available || p.available;
+        ex.buyable = ex.buyable || p.buyable;
+        ex.queued = ex.queued || p.queued;
+        if(p.buyable){ ex.url=p.url; ex.price=p.price; ex.compare_at=p.compare_at; }
+      }
     }
     CATALOG = [...seen.values()].sort((a,b)=> (a.type+a.title).toLowerCase() < (b.type+b.title).toLowerCase()? -1:1);
     $("#meta").textContent = `· ${CATALOG.length} tools known · catalog updated ${cat.generated||""}`;
@@ -177,9 +192,10 @@ async function load(){
       watchlist = (c.watchlist||[]).slice();
       alertNew = c.alert_on_new !== false;
       alertSold = c.alert_on_sold_out === true;
+      alertQueued = c.alert_on_queued_watch === true;
     }
   }catch(e){}
-  $("#tNew").checked = alertNew; $("#tSold").checked = alertSold;
+  $("#tNew").checked = alertNew; $("#tSold").checked = alertSold; $("#tQueued").checked = alertQueued;
   buildTypeFilter(); renderAll();
 }
 
@@ -202,11 +218,12 @@ function renderChips(){
 }
 
 function renderStats(){
-  const onSale = CATALOG.filter(p=>p.available);
-  const watchedOnSale = onSale.filter(p=>matchKw(p.title)).length;
+  const buyable = CATALOG.filter(p=>p.buyable);
+  const queued = CATALOG.filter(p=>p.queued).length;
+  const watchedBuyable = buyable.filter(p=>matchKw(p.title)).length;
   $("#wstats").innerHTML = `Watching <b>${watchlist.length}</b> keyword(s) · ` +
     `${CATALOG.filter(p=>matchKw(p.title)).length} catalog tools matched · ` +
-    `${onSale.length} on sale now (${watchedOnSale} watched).`;
+    `${buyable.length} buyable now (${watchedBuyable} watched) · ${queued} queued.`;
 }
 
 function renderList(){
@@ -214,7 +231,7 @@ function renderList(){
   const rows = CATALOG.filter(p=>
     (!q || norm(p.title).includes(q)) &&
     (!ty || p.type===ty) &&
-    (!saleOnly || p.available));
+    (!saleOnly || p.buyable || p.queued));
   const list = $("#list");
   if(!rows.length){ list.innerHTML = `<div class="note" style="padding:12px 0">No matches.</div>`; return; }
   let html = "", lastType = null;
@@ -222,8 +239,9 @@ function renderList(){
     if(p.type !== lastType){ html += `<div class="grp">${p.type}</div>`; lastType = p.type; }
     const via = matchKw(p.title);
     const checked = via ? "checked" : "";
-    const badge = p.available
-      ? `<span class="badge sale">ON SALE</span> <span class="price"><span class="now">${money(p.price)}</span>${p.compare_at&&p.compare_at>p.price?` <s>${money(p.compare_at)}</s>`:""}</span>`
+    const priceHtml = p.price!=null ? `<span class="price"><span class="now">${money(p.price)}</span>${p.compare_at&&p.compare_at>p.price?` <s>${money(p.compare_at)}</s>`:""}</span>` : "";
+    const badge = p.buyable ? `<span class="badge sale">ON SALE</span> ${priceHtml}`
+      : p.queued ? `<span class="badge queued">queued</span> ${priceHtml}`
       : `<span class="badge sold">sold</span>`;
     html += `<div class="item">
       <input type="checkbox" data-title="${p.title.replace(/"/g,'&quot;')}" ${checked}>
@@ -238,7 +256,10 @@ function renderList(){
 function renderOut(){
   const cfg = {
     _comment:"watchlist = case-insensitive keywords matched against product titles. Generated by the picker UI.",
-    watchlist, alert_on_new: $("#tNew").checked, alert_on_sold_out: $("#tSold").checked
+    watchlist,
+    alert_on_new: $("#tNew").checked,
+    alert_on_sold_out: $("#tSold").checked,
+    alert_on_queued_watch: $("#tQueued").checked
   };
   $("#out").value = JSON.stringify(cfg, null, 2) + "\n";
 }
@@ -259,6 +280,7 @@ $("#typeSel").addEventListener("change", renderList);
 $("#onSaleOnly").addEventListener("change", renderList);
 $("#tNew").addEventListener("change", renderOut);
 $("#tSold").addEventListener("change", renderOut);
+$("#tQueued").addEventListener("change", renderOut);
 
 $("#chips").addEventListener("input", e=>{
   if(e.target.dataset.i!=null){ watchlist[+e.target.dataset.i] = e.target.value;
@@ -274,8 +296,8 @@ $("#list").addEventListener("change", e=>{
   const title = e.target.dataset.title;
   if(e.target.checked){ addKeyword(modelKeyword(title)); }
   else { // remove every keyword that matches this title
-    const t = norm(title);
-    watchlist = watchlist.filter(w=> !t.includes(norm(w)));
+    const t = squash(title);
+    watchlist = watchlist.filter(w=> !(squash(w) && t.includes(squash(w))));
     renderAll();
   }
 });
