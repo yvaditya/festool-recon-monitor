@@ -1,21 +1,22 @@
 {
-  "featured": "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus",
+  "featured": "etsc-2-150-basic",
   "initialized": true,
-  "last_run": "Sun, 21 Jun 2026 09:06:13 +0000",
+  "last_run": "Mon, 22 Jun 2026 21:50:42 +0000",
   "on_sale": {
-    "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus": {
-      "compare_at": 599.0,
-      "handle": "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus",
-      "price": 479.2,
-      "title": "Cordless Jigsaw CARVEX PSBC 420 HPC 4,0 EBI-Plus",
-      "type": "Jigsaw",
-      "url": "https://www.festoolrecon.com/products/cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus"
+    "etsc-2-150-basic": {
+      "compare_at": 549.0,
+      "handle": "etsc-2-150-basic",
+      "price": 439.2,
+      "title": "ETSC 2 150-Basic",
+      "type": "Sander",
+      "url": "https://www.festoolrecon.com/products/etsc-2-150-basic"
     }
   },
   "queued": [
-    "tsv-60-keb-f-plus",
+    "cordless-impact-drill-tid-18-hpc-4-0-i-plus-1",
+    "cordless-orbital-sander-rtsc-400-3-0-i-plus",
     "random-orbital-sander-ets-125-req-plus",
-    "dust-extractor-ct-15-hepa",
+    "cordless-jigsaw-carvex-psbc-420-hpc-4-0-ebi-plus",
     "dust-extractor-cleantec-ct-36-ei-ac-hepa"
   ]
 }
